@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driver</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#14181f;color:#e8ecef;font-family:system-ui,sans-serif;padding:20px;text-align:center}
+button{width:180px;height:180px;border-radius:50%;border:0;font-size:18px;font-weight:700;background:#ffb020;color:#1a1300}
+button.on{background:#34d399;color:#052015}
+#info{font-family:monospace;font-size:13px;color:#8b95a1;line-height:1.7}
+small{color:#5b6670;max-width:320px;font-size:11.5px;line-height:1.5}
+</style></head><body>
+<button id="btn">Start sharing</button>
+<div id="info">Not sharing</div>
+<small>Sends your GPS to Firebase. The ESP32 reads it and forwards it to the tracker website. Keep this screen on.</small>
+<script>
+const DB = 'https://campus-shuttle-tracker-c004d-default-rtdb.asia-southeast1.firebasedatabase.app/phone_gps.json';
+let watchId = null, sent = 0, lock = null;
+const btn = document.getElementById('btn'), info = document.getElementById('info');
+
+function send(pos) {
+  const c = pos.coords;
+  fetch(DB, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat: c.latitude, lng: c.longitude, acc: Math.round(c.accuracy), ts: Date.now() })
+  }).then(r => {
+    if (!r.ok) throw new Error('Firebase HTTP ' + r.status);
+    sent++;
+    info.innerHTML = c.latitude.toFixed(6) + ', ' + c.longitude.toFixed(6) +
+      '<br>accuracy ' + Math.round(c.accuracy) + ' m · sent ' + sent;
+  }).catch(e => { info.textContent = 'Send failed: ' + e.message; });
+}
+
+async function start() {
+  if (!navigator.geolocation) { info.textContent = 'No GPS support in this browser'; return; }
+  watchId = navigator.geolocation.watchPosition(send,
+    err => { info.textContent = 'Location error: ' + err.message; },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  try { lock = await navigator.wakeLock.request('screen'); } catch (e) {}
+  btn.classList.add('on'); btn.textContent = 'Stop sharing';
+}
+function stop() {
+  navigator.geolocation.clearWatch(watchId); watchId = null;
+  if (lock) { lock.release(); lock = null; }
+  btn.classList.remove('on'); btn.textContent = 'Start sharing'; info.textContent = 'Not sharing';
+}
+btn.onclick = () => (watchId === null ? start() : stop());
+</script></body></html>
